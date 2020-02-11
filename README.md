@@ -30,7 +30,7 @@ Immediate reporting service of Roadkill by Computer Vision (object recognition)
 See [README for frontend](src/Frontend/README.md)
 
 ### Machine Learning Algorithm
-See [README for frontend](src/MachineLearning/README.md)
+See [README for machine learning algorithm](src/MachineLearning/README.md)
 
 ### Backend
 See [README for backend](src/Backend/README.md)
