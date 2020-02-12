@@ -7,11 +7,13 @@ Immediate reporting service of Roadkill by Computer Vision (object recognition)
 
 ## Team: ??
 
-### Leader: 김현영
+### Leader 
+- 김현영 [@hyun-yeong](https://github.com/hyun-yeong)
+ 
 ### Members
-- 김선우 [@](https://github.com/ScienceEater)
+- 김선우 [@feuziq47](https://github.com/feuziq47)
 - 김무성 [@ScienceEater](https://github.com/ScienceEater)
-- 박신현 [@](https://github.com/ScienceEater)
+- 박신현 [@sinhyun-park](https://github.com/sinhyun-park)
 - 오정민
 - 이다봄
 
