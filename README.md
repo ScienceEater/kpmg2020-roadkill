@@ -14,8 +14,8 @@ Immediate reporting service of Roadkill by Computer Vision (object recognition)
 - 김선우 [@feuziq47](https://github.com/feuziq47)
 - 김무성 [@ScienceEater](https://github.com/ScienceEater)
 - 박신현 [@sinhyun-park](https://github.com/sinhyun-park)
-- 오정민
-- 이다봄
+- 오정민 [@jeongmin-oh](https://github.com/jeongmin-oh)
+- 이다봄 
 
 ## Documents
 
