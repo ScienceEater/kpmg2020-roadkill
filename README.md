@@ -3,9 +3,10 @@ KPMG Ideation Challenge 2020 Project: Roadkill
 
 ## SUBJECT
 Immediate reporting service of Roadkill by Computer Vision (object recognition) 
-![Image of Project](https://github.com/ScienceEater/kpmg2020-roadkill/images/logo.png)
+![Image of Project](https://github.com/ScienceEater/kpmg2020-roadkill/images/cover.jpg)
 
-## Team: ??
+## Team: 
+Goldentime Keeper
 
 ### Leader 
 - 김현영 [@hyun-yeong](https://github.com/hyun-yeong)
