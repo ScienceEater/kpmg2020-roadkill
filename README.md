@@ -3,7 +3,7 @@ KPMG Ideation Challenge 2020 Project: Roadkill
 
 ## SUBJECT
 Immediate reporting service of Roadkill by Computer Vision (object recognition) 
-![Image of Project](https://github.com/ScienceEater/kpmg2020-roadkill/images/cover.jpg)
+![Image of Project](https://github.com/ScienceEater/kpmg2020-roadkill/cover.jpg)
 
 ## Team: 
 Goldentime Keeper
