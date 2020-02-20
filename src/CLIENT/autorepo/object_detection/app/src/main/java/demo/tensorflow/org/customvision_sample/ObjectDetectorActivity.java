@@ -16,22 +16,38 @@
 
 package demo.tensorflow.org.customvision_sample;
 
+import android.Manifest;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 
+import android.location.Location;
+import android.location.LocationManager;
+import android.media.Image;
 import android.media.ImageReader.OnImageAvailableListener;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
 import android.util.Log;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
 
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
+import com.google.gson.JsonObject;
 import com.microsoft.cognitiveservices.speech.CancellationDetails;
 import com.microsoft.cognitiveservices.speech.CancellationReason;
 import com.microsoft.cognitiveservices.speech.ResultReason;
@@ -41,6 +57,10 @@ import com.microsoft.cognitiveservices.speech.SpeechRecognizer;
 import com.microsoft.cognitiveservices.speech.SpeechSynthesisResult;
 import com.microsoft.cognitiveservices.speech.SpeechSynthesizer;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.net.HttpURLConnection;
 import java.util.List;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
@@ -55,7 +75,7 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
 
     private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
     private static final float TEXT_SIZE_DIP = 10;
-
+    private static final String URL = "127.0.0.1:3000/";
     //Speech SDK
     private static String speechSubscriptionKey = "41bf04c4a128410bbb79bac741267696";
     private static String serviceRegion = "koreacentral";
@@ -67,11 +87,16 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
     private MSCognitiveServicesCustomVisionObjectDetector classifier;
     private BorderedText borderedText;
 
+
+
+
+    List<ObjectDetector.BoundingBox> results = null;
     //
     private Thread dialogThread;
     private Object lock;
     private AlertDialog dialog;
     private Runnable runnable;
+    Location location;
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -81,11 +106,10 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         speechConfig = SpeechConfig.fromSubscription(speechSubscriptionKey, serviceRegion);
 
 
-
         // Alerting thread
-        lock= new Object();
+        lock = new Object();
 
-        runnable = new Runnable(){
+        runnable = new Runnable() {
             @Override
             public void run() {
                 try {
@@ -94,7 +118,7 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
                     Future<SpeechSynthesisResult> task = synthesizer.SpeakTextAsync("Do you want to report?");
                     assert (task != null);
 
-                    SpeechSynthesisResult result =task.get();
+                    SpeechSynthesisResult result = task.get();
                     if (result.getReason() == ResultReason.SynthesizingAudioCompleted) {
                         LOGGER.i("speech success");
                     } else if (result.getReason() == ResultReason.Canceled) {
@@ -102,41 +126,39 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
                     }
                     result.close();
                     synthesizer.close();
-                } catch (Exception ex){
-                    assert(false);
+                } catch (Exception ex) {
+                    assert (false);
                 }
                 makeDecision();
             }
         };
     }
 
-    public void makeDecision(){
+    public void makeDecision() {
         SpeechRecognizer reco = new SpeechRecognizer(speechConfig);
-        assert(reco != null);
+        assert (reco != null);
         System.out.println("Say something");
         Future<SpeechRecognitionResult> task = reco.recognizeOnceAsync();
-        assert(task != null);
+        assert (task != null);
 
         try {
             SpeechRecognitionResult result = task.get();
-            assert(result != null);
+            assert (result != null);
 
             if (result.getReason() == ResultReason.RecognizedSpeech) {
                 System.out.println("RECOGNIZED: Text=" + result.getText());
-                if(result.getText().equals("Yes.")){
+                if (result.getText().equals("Yes.")) {
                     System.out.println(" yes recognized.");
                     dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
                     System.out.println(dialog.isShowing());
-                }else if(result.getText().equals("No.")){
+                } else if (result.getText().equals("No.")) {
                     System.out.println(" no recognized.");
                     dialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick();
                     System.out.println(dialog.isShowing());
                 }
-            }
-            else if (result.getReason() == ResultReason.NoMatch) {
+            } else if (result.getReason() == ResultReason.NoMatch) {
                 System.out.println("NOMATCH: Speech could not be recognized.");
-            }
-            else if (result.getReason() == ResultReason.Canceled) {
+            } else if (result.getReason() == ResultReason.Canceled) {
                 CancellationDetails cancellation = CancellationDetails.fromResult(result);
                 System.out.println("CANCELED: Reason=" + cancellation.getReason());
 
@@ -159,17 +181,18 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
     }
 
     // Ask to user reporting the case
-    public void showAlert(){
+    public void showAlert() {
         AlertDialog.Builder builder = new AlertDialog.Builder(ObjectDetectorActivity.this);
-        dialog=builder.setTitle("Roadkill detected")
+        dialog = builder.setTitle("Roadkill detected")
                 .setMessage("Do you want to report?")
                 .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
-                        if(dialogThread.isAlive()){
+                        if (dialogThread.isAlive()) {
                             dialogThread.interrupt();
                         }
-                        LOGGER.i("YES","ok button clicked");
+                        LOGGER.i("YES", "ok button clicked");
+
                         releaseLock();
                     }
                 })
@@ -186,11 +209,35 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
                 .create();
         dialog.show();
     }
+
+    // release main thread lock
     void releaseLock(){
         synchronized (lock){
             lock.notify();
             Log.e("TAG","notify");
         }
+    }
+
+    // send to server
+    public void datapost(String url, String section, String animal){
+        String newurl= URL.concat(url);
+        JSONObject jsonObject = new JSONObject();
+        try {
+            jsonObject.put("section", section);
+            jsonObject.put("animal", animal);
+
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        String json = jsonObject.toString();
+        final RequestQueue requestQueue = Volley.newRequestQueue(this);
+        final JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.POST, newurl, jsonObject, null, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                LOGGER.i("post error");
+            }
+        });
     }
 
 
@@ -253,7 +300,7 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
                     @Override
                     public void run() {
                         final long startTime = SystemClock.uptimeMillis();
-                        List<ObjectDetector.BoundingBox> results = classifier.detectObjects(rgbFrameBitmap, sensorOrientation);
+                        results = classifier.detectObjects(rgbFrameBitmap, sensorOrientation);
                         lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
 
                         LOGGER.i("Detect: %s", results);
