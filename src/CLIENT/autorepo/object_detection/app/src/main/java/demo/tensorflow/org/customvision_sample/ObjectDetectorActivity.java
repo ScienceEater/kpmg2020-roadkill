@@ -40,12 +40,15 @@ import android.util.Log;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
+import android.widget.Toast;
 
+import com.android.volley.AuthFailureError;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.gson.JsonObject;
 import com.microsoft.cognitiveservices.speech.CancellationDetails;
@@ -60,8 +63,12 @@ import com.microsoft.cognitiveservices.speech.SpeechSynthesizer;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import retrofit2.Retrofit;
+
 import java.net.HttpURLConnection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -75,10 +82,10 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
 
     private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
     private static final float TEXT_SIZE_DIP = 10;
-    private static final String URL = "127.0.0.1:3000/";
+    private static final String URL = "server address";
     //Speech SDK
-    private static String speechSubscriptionKey = "41bf04c4a128410bbb79bac741267696";
-    private static String serviceRegion = "koreacentral";
+    private static String speechSubscriptionKey = "subscriptionkey";
+    private static String serviceRegion = "region";
 
     private SpeechConfig speechConfig;
     private SpeechSynthesizer synthesizer;
@@ -88,9 +95,10 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
     private BorderedText borderedText;
 
 
-
+    RequestQueue requestQueue=null;
 
     List<ObjectDetector.BoundingBox> results = null;
+    ObjectDetector.BoundingBox tempResult = null;
     //
     private Thread dialogThread;
     private Object lock;
@@ -102,7 +110,7 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         super.onCreate(savedInstanceState);
 
         classifier = new MSCognitiveServicesCustomVisionObjectDetector(this);
-
+        requestQueue = Volley.newRequestQueue(this);
         speechConfig = SpeechConfig.fromSubscription(speechSubscriptionKey, serviceRegion);
 
 
@@ -129,7 +137,7 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
                 } catch (Exception ex) {
                     assert (false);
                 }
-                makeDecision();
+                //makeDecision();
             }
         };
     }
@@ -185,27 +193,8 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         AlertDialog.Builder builder = new AlertDialog.Builder(ObjectDetectorActivity.this);
         dialog = builder.setTitle("Roadkill detected")
                 .setMessage("Do you want to report?")
-                .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        if (dialogThread.isAlive()) {
-                            dialogThread.interrupt();
-                        }
-                        LOGGER.i("YES", "ok button clicked");
-
-                        releaseLock();
-                    }
-                })
-                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        if(dialogThread.isAlive()){
-                            dialogThread.interrupt();
-                        }
-                        LOGGER.i("NO","cancle button clicked");
-                        releaseLock();
-                    }
-                })
+                .setPositiveButton("Ok", yesButtonClickListener)
+                .setNegativeButton("Cancel", noButtonClickListener)
                 .create();
         dialog.show();
     }
@@ -219,25 +208,32 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
     }
 
     // send to server
-    public void datapost(String url, String section, String animal){
-        String newurl= URL.concat(url);
-        JSONObject jsonObject = new JSONObject();
-        try {
-            jsonObject.put("section", section);
-            jsonObject.put("animal", animal);
+    public StringRequest datapost(String url, String section, String animal) {
+        String newurl = URL.concat(url);
 
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
 
-        String json = jsonObject.toString();
-        final RequestQueue requestQueue = Volley.newRequestQueue(this);
-        final JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(Request.Method.POST, newurl, jsonObject, null, new Response.ErrorListener() {
+        final StringRequest request = new StringRequest(Request.Method.POST,
+                newurl,
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+                        Toast.makeText(getApplicationContext(), "success", Toast.LENGTH_SHORT).show();
+                    }
+                }, new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                LOGGER.i("post error");
+                Toast.makeText(getApplicationContext(), error.getMessage(), Toast.LENGTH_LONG).show();
             }
-        });
+        }) {
+            @Override
+            protected Map<String, String> getParams() throws AuthFailureError {
+                Map<String,String> params = new HashMap<>();
+                params.put("section",section);
+                params.put("animal",animal);
+                return params;
+            }
+        };
+        return request;
     }
 
 
@@ -313,7 +309,8 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
                         // if killed animal detected, detecting thread stop and ask to user
                         if(results !=null){
                             for(int j=0; j<results.size();j++) {
-                                if (results.get(j).getClassIdentifier().equals("kill")) {
+                                if (results.get(j).getClassIdentifier().contains("Dead_") && results.get(j).getConfidence()>0.5) {
+                                    tempResult=results.get(j);
                                     runOnUiThread(new Runnable(){
                                         @Override
                                         public void run() {
@@ -360,4 +357,33 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         lines.add("Inference time: " + lastProcessingTimeMs + "ms");
         borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
     }
+
+    private DialogInterface.OnClickListener yesButtonClickListener = new DialogInterface.OnClickListener() {
+
+        @Override
+        public void onClick(DialogInterface dialogInterface, int i) {
+
+            if (dialogThread.isAlive()) {
+                dialogThread.interrupt();
+            }
+
+            StringRequest req=datapost("/test","Seoul", tempResult.getClassIdentifier());
+            req.setShouldCache(false);
+            requestQueue.add(req);
+            releaseLock();
+        }
+    };
+    private DialogInterface.OnClickListener noButtonClickListener = new DialogInterface.OnClickListener() {
+        @Override
+        public void onClick(DialogInterface dialogInterface, int i) {
+
+            if(dialogThread.isAlive()){
+                dialogThread.interrupt();
+            }
+            LOGGER.i("NO","cancle button clicked");
+            dialog.dismiss();
+            releaseLock();
+        }
+    };
 }
+
