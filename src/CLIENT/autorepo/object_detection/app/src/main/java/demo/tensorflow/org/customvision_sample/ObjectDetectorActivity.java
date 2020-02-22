@@ -25,13 +25,17 @@ import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.Image;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.StrictMode;
 import android.os.SystemClock;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -63,11 +67,12 @@ import com.microsoft.cognitiveservices.speech.SpeechSynthesizer;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import retrofit2.Retrofit;
 
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
@@ -82,21 +87,17 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
 
     private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
     private static final float TEXT_SIZE_DIP = 10;
-    private static final String URL = "server address";
+    private static final String URL = "Server address";
     //Speech SDK
     private static String speechSubscriptionKey = "subscriptionkey";
-    private static String serviceRegion = "region";
+    private static String serviceRegion = "koreacentral";
 
     private SpeechConfig speechConfig;
     private SpeechSynthesizer synthesizer;
-
     private Integer sensorOrientation;
     private MSCognitiveServicesCustomVisionObjectDetector classifier;
     private BorderedText borderedText;
-
-
-    RequestQueue requestQueue=null;
-
+    private RequestQueue requestQueue = null;
     List<ObjectDetector.BoundingBox> results = null;
     ObjectDetector.BoundingBox tempResult = null;
     //
@@ -104,14 +105,24 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
     private Object lock;
     private AlertDialog dialog;
     private Runnable runnable;
-    Location location;
+    private LocationManager lm;
+    private Location location;
+
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        if (android.os.Build.VERSION.SDK_INT > 9)
+        {
+            StrictMode.ThreadPolicy policy = new
+                    StrictMode.ThreadPolicy.Builder().permitAll().build();
+            StrictMode.setThreadPolicy(policy);
+        }
         classifier = new MSCognitiveServicesCustomVisionObjectDetector(this);
         requestQueue = Volley.newRequestQueue(this);
         speechConfig = SpeechConfig.fromSubscription(speechSubscriptionKey, serviceRegion);
+
+
+        lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
 
         // Alerting thread
@@ -120,24 +131,9 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         runnable = new Runnable() {
             @Override
             public void run() {
-                try {
-                    // Note: this will block the UI thread, so eventually, you want to register for the event
-                    synthesizer = new SpeechSynthesizer(speechConfig);
-                    Future<SpeechSynthesisResult> task = synthesizer.SpeakTextAsync("Do you want to report?");
-                    assert (task != null);
+                makeDecision();
 
-                    SpeechSynthesisResult result = task.get();
-                    if (result.getReason() == ResultReason.SynthesizingAudioCompleted) {
-                        LOGGER.i("speech success");
-                    } else if (result.getReason() == ResultReason.Canceled) {
-                        LOGGER.i("speech failed");
-                    }
-                    result.close();
-                    synthesizer.close();
-                } catch (Exception ex) {
-                    assert (false);
-                }
-                //makeDecision();
+
             }
         };
     }
@@ -150,24 +146,29 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         assert (task != null);
 
         try {
-            SpeechRecognitionResult result = task.get();
-            assert (result != null);
+            SpeechRecognitionResult recognitionResult = task.get();
+            assert (recognitionResult != null);
 
-            if (result.getReason() == ResultReason.RecognizedSpeech) {
-                System.out.println("RECOGNIZED: Text=" + result.getText());
-                if (result.getText().equals("Yes.")) {
-                    System.out.println(" yes recognized.");
-                    dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
-                    System.out.println(dialog.isShowing());
-                } else if (result.getText().equals("No.")) {
-                    System.out.println(" no recognized.");
-                    dialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick();
-                    System.out.println(dialog.isShowing());
-                }
-            } else if (result.getReason() == ResultReason.NoMatch) {
+            if (recognitionResult.getReason() == ResultReason.RecognizedSpeech) {
+                System.out.println("RECOGNIZED: Text=" + recognitionResult.getText());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (recognitionResult.getText().equals("Yes.")) {
+                            System.out.println(" yes recognized.");
+                            dialog.getButton(DialogInterface.BUTTON_POSITIVE).performClick();
+                            recognitionResult.close();
+                        } else {
+                            dialog.getButton(DialogInterface.BUTTON_NEGATIVE).performClick();
+                            recognitionResult.close();
+                        }
+                    }
+                });
+
+            } else if (recognitionResult.getReason() == ResultReason.NoMatch) {
                 System.out.println("NOMATCH: Speech could not be recognized.");
-            } else if (result.getReason() == ResultReason.Canceled) {
-                CancellationDetails cancellation = CancellationDetails.fromResult(result);
+            } else if (recognitionResult.getReason() == ResultReason.Canceled) {
+                CancellationDetails cancellation = CancellationDetails.fromResult(recognitionResult);
                 System.out.println("CANCELED: Reason=" + cancellation.getReason());
 
                 if (cancellation.getReason() == CancellationReason.Error) {
@@ -178,7 +179,7 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
 
             }
 
-            result.close();
+            //recognitionResult.close();
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (ExecutionException e) {
@@ -200,15 +201,15 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
     }
 
     // release main thread lock
-    void releaseLock(){
-        synchronized (lock){
+    void releaseLock() {
+        synchronized (lock) {
             lock.notify();
-            Log.e("TAG","notify");
+            Log.e("TAG", "notify");
         }
     }
 
     // send to server
-    public StringRequest datapost(String url, String section, String animal) {
+    public StringRequest datapost(String url, double latitude, double longitude, String animal) {
         String newurl = URL.concat(url);
 
 
@@ -227,15 +228,15 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         }) {
             @Override
             protected Map<String, String> getParams() throws AuthFailureError {
-                Map<String,String> params = new HashMap<>();
-                params.put("section",section);
-                params.put("animal",animal);
+                Map<String, String> params = new HashMap<>();
+                params.put("latitude", Double.toString(latitude));
+                params.put("longitude", Double.toString(longitude));
+                params.put("animal", animal);
                 return params;
             }
         };
         return request;
     }
-
 
 
     @Override
@@ -307,28 +308,45 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
 
 
                         // if killed animal detected, detecting thread stop and ask to user
-                        if(results !=null){
-                            for(int j=0; j<results.size();j++) {
-                                if (results.get(j).getClassIdentifier().contains("Dead_") && results.get(j).getConfidence()>0.5) {
-                                    tempResult=results.get(j);
-                                    runOnUiThread(new Runnable(){
+                        if (results != null) {
+                            for (int j = 0; j < results.size(); j++) {
+                                if (results.get(j).getClassIdentifier().contains("Dead_") && results.get(j).getConfidence() > 0.5) {
+                                    tempResult = results.get(j);
+                                    runOnUiThread(new Runnable() {
                                         @Override
                                         public void run() {
                                             showAlert();
                                         }
+
                                     });
-                                    // alert Thread run
+                                    try {
+                                        // Note: this will block the UI thread, so eventually, you want to register for the event
+                                        synthesizer = new SpeechSynthesizer(speechConfig);
+                                        Future<SpeechSynthesisResult> task = synthesizer.SpeakTextAsync("Do you want to report?");
+                                        assert (task != null);
+
+                                        SpeechSynthesisResult result = task.get();
+                                        if (result.getReason() == ResultReason.SynthesizingAudioCompleted) {
+                                            LOGGER.i("speech success");
+                                        } else if (result.getReason() == ResultReason.Canceled) {
+                                            LOGGER.i("speech failed");
+                                        }
+                                        result.close();
+                                        synthesizer.close();
+                                    } catch (Exception ex) {
+                                        assert (false);
+                                    }
                                     dialogThread = new Thread(runnable);
                                     dialogThread.start();
 
-
-                                    synchronized (lock){
+                                    synchronized (lock) {
                                         try {
                                             lock.wait();
                                         } catch (InterruptedException e) {
                                             e.printStackTrace();
                                         }
                                     }
+
                                     break;
                                 }
                             }
@@ -363,24 +381,41 @@ public class ObjectDetectorActivity extends CameraActivity implements OnImageAva
         @Override
         public void onClick(DialogInterface dialogInterface, int i) {
 
-            if (dialogThread.isAlive()) {
-                dialogThread.interrupt();
+            if (ActivityCompat.checkSelfPermission(ObjectDetectorActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(ObjectDetectorActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(ObjectDetectorActivity.this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+                return;
+            }else{
+                location = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                if(location == null){
+                    location= lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                    double latitude = location.getLatitude();
+                    double longitude = location.getLongitude();
+                    StringRequest req = datapost("/test", latitude, longitude, tempResult.getClassIdentifier());
+                    req.setShouldCache(false);
+                    requestQueue.add(req);
+                    releaseLock();
+                    Toast.makeText(getApplicationContext(), "report success", Toast.LENGTH_SHORT).show();
+
+                }else{
+                    double latitude = location.getLatitude();
+                    double longitude = location.getLongitude();
+                    StringRequest req = datapost("/test", latitude, longitude, tempResult.getClassIdentifier());
+                    req.setShouldCache(false);
+                    requestQueue.add(req);
+                    releaseLock();
+                    Toast.makeText(getApplicationContext(), "report success", Toast.LENGTH_SHORT).show();
+                }
+
             }
 
-            StringRequest req=datapost("/test","Seoul", tempResult.getClassIdentifier());
-            req.setShouldCache(false);
-            requestQueue.add(req);
-            releaseLock();
         }
+
     };
     private DialogInterface.OnClickListener noButtonClickListener = new DialogInterface.OnClickListener() {
         @Override
         public void onClick(DialogInterface dialogInterface, int i) {
 
-            if(dialogThread.isAlive()){
-                dialogThread.interrupt();
-            }
-            LOGGER.i("NO","cancle button clicked");
+            Toast.makeText(getApplicationContext(), "Cancled", Toast.LENGTH_SHORT).show();
             dialog.dismiss();
             releaseLock();
         }
