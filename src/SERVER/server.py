@@ -39,23 +39,6 @@ def test():
     
     return body
 
-
-# # Save data in section1
-# @app.route('/save', methods=['POST','GET'])
-# def save_in_section1():
-
-#     cnxn = pyodbc.connect('DRIVER='+driver+';SERVER='+server+';DATABASE='+database+';UID='+username+';PWD='+ password)
-#     cursor = cnxn.cursor()
-#     section = body['section']
-#     animal = body['animal']
-    
-#     cursor.execute("insert into Reportdata (section, animal) values (%s, %s)", (section, animal))
-
-    
-    
-#     return jsonify({"message": "success"})
-
-
 if __name__ == '__main__':
     app.run(debug=True)
     
