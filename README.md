@@ -23,7 +23,6 @@ Goldentime Keeper
 ### Presentation
 [Project Presentation (PDF)](docs/골든타임키퍼팀 발표자료 v.4.pdf)
 
-
 ## Implementation
 
 ### Frontend
