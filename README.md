@@ -21,10 +21,7 @@ Goldentime Keeper
 ## Documents
 
 ### Presentation
-[Project Presentation (PowerPoint)](docs/presentation.pptx)
-
-### Description
-[Project Description (PDF)](docs/description.pdf)
+[Project Presentation (PDF)](docs/골든타임키퍼팀 발표자료 v.4.pdf)
 
 
 ## Implementation
