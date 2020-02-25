@@ -21,7 +21,7 @@ Goldentime Keeper
 ## Documents
 
 ### Presentation
-[Project Presentation (PDF)]('docs/pdf_v4.pdf')
+[Project Presentation (PDF)](docs/pdf_v4.pdf)
 
 ## Implementation
 
